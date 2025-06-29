@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use img_processor::{DefaultImageProcessorFactory, ImageProcessorFactory, Quality};
-use std::path::Path;
+use std::{io::BufRead, path::Path};
 use tempfile::Builder;
 
 fn shrink_image(
@@ -52,12 +52,29 @@ fn process_image(
     }
 }
 
+fn process_files<F: ImageProcessorFactory, I: Iterator<Item = String>>(
+    factory: &F,
+    input_files: I,
+    output_dir: &Path,
+    quality: Quality,
+) {
+    for input in input_files {
+        if let Err(e) = process_image(factory, &input, output_dir, quality) {
+            eprintln!("Error processing image {}: {}", input, e);
+        }
+    }
+}
+
 /// Command-line interface for the image compactor
 #[derive(clap::Parser)]
 #[command(version, about)]
 struct Cli {
     /// The input image file paths or URLs (JPEG)
     input: Vec<String>,
+    /// Reading EOL separated list of files from stdin, finish with Ctrl+D
+    #[arg(long)]
+    stdin: bool,
+
 }
 
 fn main() {
@@ -66,9 +83,14 @@ fn main() {
     let factory = DefaultImageProcessorFactory {};
     let output_dir = Path::new("/tmp");
     let quality = Quality::try_from(50).unwrap();
-    for input in cli.input.iter() {
-        if let Err(e) = process_image(&factory, input, output_dir, quality) {
-            eprintln!("Error processing image {}: {}", input, e);
-        }
+    process_files(&factory, cli.input.into_iter(), output_dir, quality);
+    if cli.stdin {
+        println!("Reading list of files from stdin. Press Ctrl+D to finish input.");
+        process_files(
+            &factory,
+            std::io::stdin().lock().lines().filter_map(Result::ok),
+            output_dir,
+            quality,
+        );
     }
 }
