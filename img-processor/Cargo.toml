@@ -5,3 +5,9 @@ edition = "2024"
 
 [dependencies]
 thiserror = "2.0.12"
+
+[dependencies.image]
+version = "0.25.6"
+features = [
+    "jpeg",
+]
