@@ -24,10 +24,14 @@ pub enum ImageProcessorError {
 }
 
 type Result<T> = std::result::Result<T, ImageProcessorError>;
+
+/// Trait for image processing factories that can create image processors
 pub trait ImageProcessorFactory {
+    /// Starts processing an image at the given path
     fn process_image(&self, image: &Path) -> Result<Box<dyn ImageProcessor>>;
 }
 
+/// Represents the quality of the image compression, ranging from 0 to 100
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Quality(u8);
 
@@ -43,6 +47,7 @@ impl TryFrom<u8> for Quality {
     }
 }
 
+/// Default implementation of the ImageProcessorFactory
 pub struct DefaultImageProcessorFactory {}
 
 impl ImageProcessorFactory for DefaultImageProcessorFactory {
@@ -59,7 +64,9 @@ impl ImageProcessorFactory for DefaultImageProcessorFactory {
     }
 }
 
+/// Trait for image processors
 pub trait ImageProcessor {
+    /// Shrink the image to the specified output path with the given quality
     fn shrink_to(&self, output_path: &Path, quality: Quality) -> Result<()>;
 }
 
