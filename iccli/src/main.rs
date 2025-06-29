@@ -81,6 +81,9 @@ struct Cli {
     /// Output directory for processed images
     #[arg(long, value_name = "DIR")]
     output_dir: Option<String>,
+    /// Quality of the output images (0-100)
+    #[arg(long, value_name = "QUALITY")]
+    quality: Option<u64>,
 }
 
 fn main() -> Result<()> {
@@ -98,7 +101,16 @@ fn main() -> Result<()> {
     });
     println!("Output directory: {}", output_dir);
     let output_dir = Path::new(&output_dir);
-    let quality = Quality::try_from(50).unwrap();
+    const DEFAULT_QUALITY: u64 = 50;
+    let quality = cli.quality.unwrap_or_else(|| {
+        config
+            .get_int("quality")
+            .unwrap_or_else(|_| DEFAULT_QUALITY as i64)
+            .try_into()
+            .unwrap_or(DEFAULT_QUALITY)
+    });
+    println!("Image quality: {}", quality);
+    let quality = Quality::try_from(quality)?;
     process_files(&factory, cli.input.into_iter(), output_dir, quality);
     if cli.stdin {
         println!("Reading list of files from stdin. Press Ctrl+D to finish input.");

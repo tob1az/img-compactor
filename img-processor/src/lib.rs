@@ -35,14 +35,14 @@ pub trait ImageProcessorFactory {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Quality(u8);
 
-impl TryFrom<u8> for Quality {
+impl TryFrom<u64> for Quality {
     type Error = ImageProcessorError;
 
-    fn try_from(value: u8) -> Result<Self> {
+    fn try_from(value: u64) -> Result<Self> {
         if value > 100 {
             Err(ImageProcessorError::QualityOutOfRange)
         } else {
-            Ok(Quality(value))
+            Ok(Quality(value as u8))
         }
     }
 }
