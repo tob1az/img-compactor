@@ -6,3 +6,10 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.98"
 img-processor = { path = "../img-processor" }
+tempfile = "3.20.0"
+
+[dependencies.reqwest]
+version = "0.12.20"
+features = [
+    "blocking",
+]
