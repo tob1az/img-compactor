@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
+use config::Config;
 use img_processor::{DefaultImageProcessorFactory, ImageProcessorFactory, Quality};
 use std::{io::BufRead, path::Path};
 use tempfile::Builder;
@@ -77,13 +78,26 @@ struct Cli {
     /// Reading EOL separated list of files from stdin, finish with Ctrl+D
     #[arg(long)]
     stdin: bool,
+    /// Output directory for processed images
+    #[arg(long, value_name = "DIR")]
+    output_dir: Option<String>,
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    let config = Config::builder()
+        .add_source(config::Environment::with_prefix("ICCLI"))
+        .add_source(config::File::with_name("config.toml").required(false))
+        .build()?;
 
     let factory = DefaultImageProcessorFactory {};
-    let output_dir = Path::new("/tmp");
+    let output_dir = cli.output_dir.unwrap_or_else(|| {
+        config
+            .get_string("output_dir")
+            .unwrap_or_else(|_| "/tmp".to_string())
+    });
+    println!("Output directory: {}", output_dir);
+    let output_dir = Path::new(&output_dir);
     let quality = Quality::try_from(50).unwrap();
     process_files(&factory, cli.input.into_iter(), output_dir, quality);
     if cli.stdin {
