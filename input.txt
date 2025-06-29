@@ -1,0 +1,2 @@
+test.jpg
+https://raw.githubusercontent.com/ianare/exif-samples/refs/heads/master/jpg/Fujifilm_FinePix6900ZOOM.jpg

@@ -69,15 +69,17 @@ fn process_files<F: ImageProcessorFactory, I: Iterator<Item = String>>(
 #[derive(clap::Parser)]
 #[command(version, about)]
 struct Cli {
+    /// File path to read input paths from
+    #[arg(long, value_name = "FILE")]
+    from_file: Option<String>,
     /// The input image file paths or URLs (JPEG)
     input: Vec<String>,
     /// Reading EOL separated list of files from stdin, finish with Ctrl+D
     #[arg(long)]
     stdin: bool,
-
 }
 
-fn main() {
+fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let factory = DefaultImageProcessorFactory {};
@@ -93,4 +95,15 @@ fn main() {
             quality,
         );
     }
+    if let Some(path) = cli.from_file {
+        let input_file = std::fs::File::open(path)?;
+        let reader = std::io::BufReader::new(input_file);
+        process_files(
+            &factory,
+            reader.lines().filter_map(Result::ok),
+            output_dir,
+            quality,
+        );
+    }
+    Ok(())
 }
