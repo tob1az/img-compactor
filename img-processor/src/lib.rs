@@ -69,4 +69,15 @@ mod tests {
         let quality = Quality::try_from(150);
         assert!(quality.is_err());
     }
+
+    #[test]
+    fn test_image_processor_factory() {
+        let factory = DefaultImageProcessorFactory {};
+        let processor = factory.process_image(Path::new("test.jpg"));
+        assert!(processor.is_ok());
+        let processor = factory.process_image(Path::new("test.jpeg"));
+        assert!(processor.is_ok());
+        let processor = factory.process_image(Path::new("test.png"));
+        assert!(processor.is_err());
+    }
 }
