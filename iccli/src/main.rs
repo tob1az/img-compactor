@@ -1,4 +1,5 @@
 use anyhow::Result;
+use clap::Parser;
 use img_processor::{DefaultImageProcessorFactory, ImageProcessorFactory, Quality};
 use std::path::Path;
 use tempfile::Builder;
@@ -51,20 +52,23 @@ fn process_image(
     }
 }
 
+/// Command-line interface for the image compactor
+#[derive(clap::Parser)]
+#[command(version, about)]
+struct Cli {
+    /// The input image file paths or URLs (JPEG)
+    input: Vec<String>,
+}
+
 fn main() {
+    let cli = Cli::parse();
+
     let factory = DefaultImageProcessorFactory {};
-    let input_path = "test.jpg";
     let output_dir = Path::new("/tmp");
     let quality = Quality::try_from(50).unwrap();
-    if let Err(e) = process_image(&factory, input_path, output_dir, quality) {
-        eprintln!("Error processing image: {}", e);
-    }
-    if let Err(e) = process_image(
-        &factory,
-        "https://raw.githubusercontent.com/ianare/exif-samples/refs/heads/master/jpg/Fujifilm_FinePix6900ZOOM.jpg",
-        output_dir,
-        quality,
-    ) {
-        eprintln!("Error processing image: {}", e);
+    for input in cli.input.iter() {
+        if let Err(e) = process_image(&factory, input, output_dir, quality) {
+            eprintln!("Error processing image {}: {}", input, e);
+        }
     }
 }
