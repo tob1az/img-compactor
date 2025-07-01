@@ -4,7 +4,14 @@ use config::Config;
 use img_processor::{DefaultImageProcessorFactory, ImageProcessorFactory, Quality};
 use std::{io::BufRead, path::Path};
 use tempfile::Builder;
+use tracing::{Level, event, instrument};
+use tracing_subscriber::{
+    EnvFilter,
+    fmt::{self, format::FmtSpan},
+    prelude::*,
+};
 
+#[instrument(skip(factory))]
 fn shrink_image(
     factory: &impl ImageProcessorFactory,
     input_path: &Path,
@@ -17,10 +24,15 @@ fn shrink_image(
     let output_path = Path::new(output_dir).join(name);
     let processor = factory.process_image(input_path)?;
     processor.shrink_to(&output_path, quality)?;
-    println!("Image processed and saved to: {}", output_path.display());
+    event!(
+        Level::INFO,
+        "Image processed and saved to: {}",
+        output_path.display()
+    );
     Ok(())
 }
 
+#[instrument(skip(factory, output_dir))]
 fn process_image(
     factory: &impl ImageProcessorFactory,
     input_path: &str,
@@ -43,7 +55,11 @@ fn process_image(
             .tempfile()?;
         temp_file.disable_cleanup(true);
         let temp_path = temp_file.path();
-        println!("Temporary file created at: {}", temp_path.display());
+        event!(
+            Level::INFO,
+            "Temporary file created at: {}",
+            temp_path.display()
+        );
         std::fs::write(temp_path, bytes)?;
         shrink_image(factory, temp_path, output_dir, quality)
     } else {
@@ -60,6 +76,7 @@ fn process_files<F: ImageProcessorFactory, I: Iterator<Item = String>>(
     quality: Quality,
 ) {
     for input in input_files {
+        event!(Level::INFO, "Processing image: {}", input);
         if let Err(e) = process_image(factory, &input, output_dir, quality) {
             eprintln!("Error processing image {}: {}", input, e);
         }
@@ -87,6 +104,16 @@ struct Cli {
 }
 
 fn main() -> Result<()> {
+    // Initialize tracing subscriber for logging
+    tracing_subscriber::registry()
+        .with(
+            fmt::layer()
+                .with_target(false)
+                .with_span_events(FmtSpan::CLOSE),
+        )
+        .with(EnvFilter::from_default_env())
+        .init();
+
     let cli = Cli::parse();
     let config = Config::builder()
         .add_source(config::Environment::with_prefix("ICCLI"))
@@ -99,7 +126,7 @@ fn main() -> Result<()> {
             .get_string("output_dir")
             .unwrap_or_else(|_| "/tmp".to_string())
     });
-    println!("Output directory: {}", output_dir);
+    event!(Level::INFO, "Output directory: {}", output_dir);
     let output_dir = Path::new(&output_dir);
     const DEFAULT_QUALITY: u64 = 50;
     let quality = cli.quality.unwrap_or_else(|| {
@@ -109,11 +136,14 @@ fn main() -> Result<()> {
             .try_into()
             .unwrap_or(DEFAULT_QUALITY)
     });
-    println!("Image quality: {}", quality);
+    event!(Level::INFO, "Image quality: {}", quality);
     let quality = Quality::try_from(quality)?;
     process_files(&factory, cli.input.into_iter(), output_dir, quality);
     if cli.stdin {
-        println!("Reading list of files from stdin. Press Ctrl+D to finish input.");
+        event!(
+            Level::WARN,
+            "Reading list of files from stdin. Press Ctrl+D to finish input."
+        );
         process_files(
             &factory,
             std::io::stdin().lock().lines().filter_map(Result::ok),

@@ -9,6 +9,8 @@ clap = { version = "4.5.40", features = ["derive"] }
 config = { version = "0.15.11", default-features = false, features = ["toml"] }
 img-processor = { path = "../img-processor" }
 tempfile = "3.20.0"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 
 [dependencies.reqwest]
 version = "0.12.20"
