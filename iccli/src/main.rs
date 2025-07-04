@@ -33,7 +33,7 @@ fn shrink_image(
 }
 
 #[instrument(skip(factory, output_dir))]
-fn process_image(
+async fn process_image(
     factory: &impl ImageProcessorFactory,
     input_path: &str,
     output_dir: &Path,
@@ -41,14 +41,14 @@ fn process_image(
 ) -> Result<()> {
     if input_path.starts_with("http://") || input_path.starts_with("https://") {
         // Handle remote image processing
-        let response = reqwest::blocking::get(input_path)?;
+        let response = reqwest::get(input_path).await?;
         if !response.status().is_success() {
             return Err(anyhow::anyhow!(
                 "Failed to fetch image from URL: {}",
                 input_path
             ));
         }
-        let bytes = response.bytes()?;
+        let bytes = response.bytes().await?;
         let mut temp_file = Builder::new()
             .prefix("img_compactor_")
             .suffix(".jpg")
@@ -60,16 +60,22 @@ fn process_image(
             "Temporary file created at: {}",
             temp_path.display()
         );
-        std::fs::write(temp_path, bytes)?;
-        shrink_image(factory, temp_path, output_dir, quality)
+        tokio::fs::write(temp_path, bytes).await?;
+        //tokio::task::spawn_blocking(move || {
+            shrink_image(factory, temp_path, output_dir, quality)
+        //})
+        //.await?
     } else {
         // Handle local image processing
         let input_path = Path::new(input_path);
-        shrink_image(factory, input_path, output_dir, quality)
+        //tokio::task::spawn_blocking(move || {
+            shrink_image(factory, input_path, output_dir, quality)
+        //})
+        //.await?
     }
 }
 
-fn process_files<F: ImageProcessorFactory, I: Iterator<Item = String>>(
+async fn process_files<F: ImageProcessorFactory, I: Iterator<Item = String>>(
     factory: &F,
     input_files: I,
     output_dir: &Path,
@@ -77,9 +83,11 @@ fn process_files<F: ImageProcessorFactory, I: Iterator<Item = String>>(
 ) {
     for input in input_files {
         event!(Level::INFO, "Processing image: {}", input);
-        if let Err(e) = process_image(factory, &input, output_dir, quality) {
+        //tokio::spawn(async move {
+        if let Err(e) = process_image(factory, &input, output_dir, quality).await {
             eprintln!("Error processing image {}: {}", input, e);
         }
+        //});
     }
 }
 
@@ -103,7 +111,8 @@ struct Cli {
     quality: Option<u64>,
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     // Initialize tracing subscriber for logging
     tracing_subscriber::registry()
         .with(
@@ -138,7 +147,7 @@ fn main() -> Result<()> {
     });
     event!(Level::INFO, "Image quality: {}", quality);
     let quality = Quality::try_from(quality)?;
-    process_files(&factory, cli.input.into_iter(), output_dir, quality);
+    process_files(&factory, cli.input.into_iter(), output_dir, quality).await;
     if cli.stdin {
         event!(
             Level::WARN,
@@ -149,7 +158,8 @@ fn main() -> Result<()> {
             std::io::stdin().lock().lines().filter_map(Result::ok),
             output_dir,
             quality,
-        );
+        )
+        .await;
     }
     if let Some(path) = cli.from_file {
         let input_file = std::fs::File::open(path)?;
@@ -159,7 +169,8 @@ fn main() -> Result<()> {
             reader.lines().filter_map(Result::ok),
             output_dir,
             quality,
-        );
+        )
+        .await;
     }
     Ok(())
 }
