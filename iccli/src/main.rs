@@ -162,20 +162,18 @@ async fn main() -> Result<()> {
     event!(Level::INFO, "Image quality: {}", quality);
     let quality = Quality::try_from(quality)?;
     process_files(factory.clone(), cli.input.into_iter(), output_dir, quality).await;
-    /*if cli.stdin {
+    if cli.stdin {
         event!(
             Level::WARN,
             "Reading list of files from stdin. Press Ctrl+D to finish input."
         );
-        let stdin = std::io::stdin().lock();
-        process_files(
-            factory.clone(),
-            stdin.lines().filter_map(Result::ok),
-            output_dir,
-            quality,
-        )
-        .await;
-    }*/
+        let stdin = std::io::stdin()
+            .lock()
+            .lines()
+            .filter_map(Result::ok)
+            .collect::<Vec<_>>();
+        process_files(factory.clone(), stdin.into_iter(), output_dir, quality).await;
+    }
     if let Some(path) = cli.from_file {
         let input_file = std::fs::File::open(path)?;
         let reader = std::io::BufReader::new(input_file);
