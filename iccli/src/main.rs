@@ -1,9 +1,11 @@
 use anyhow::Result;
 use clap::Parser;
 use config::Config;
+use futures::future::join_all;
 use img_processor::{DefaultImageProcessorFactory, ImageProcessorFactory, Quality};
-use std::{io::BufRead, path::Path};
+use std::{io::BufRead, path::Path, sync::Arc};
 use tempfile::Builder;
+use tokio::sync::Mutex;
 use tracing::{Level, event, instrument};
 use tracing_subscriber::{
     EnvFilter,
@@ -33,8 +35,8 @@ fn shrink_image(
 }
 
 #[instrument(skip(factory, output_dir))]
-async fn process_image(
-    factory: &impl ImageProcessorFactory,
+async fn process_image<F: ImageProcessorFactory + Send + 'static>(
+    factory: Arc<Mutex<F>>,
     input_path: &str,
     output_dir: &Path,
     quality: Quality,
@@ -54,41 +56,53 @@ async fn process_image(
             .suffix(".jpg")
             .tempfile()?;
         temp_file.disable_cleanup(true);
-        let temp_path = temp_file.path();
+        let temp_path = temp_file.path().to_owned();
         event!(
             Level::INFO,
             "Temporary file created at: {}",
             temp_path.display()
         );
-        tokio::fs::write(temp_path, bytes).await?;
-        //tokio::task::spawn_blocking(move || {
-            shrink_image(factory, temp_path, output_dir, quality)
-        //})
-        //.await?
+        tokio::fs::write(&temp_path, bytes).await?;
+        let output_dir = output_dir.to_owned();
+        tokio::task::spawn_blocking(move || {
+            let factory = factory.blocking_lock();
+            shrink_image(&*factory, &temp_path, &output_dir, quality)
+        })
+        .await?
     } else {
         // Handle local image processing
-        let input_path = Path::new(input_path);
-        //tokio::task::spawn_blocking(move || {
-            shrink_image(factory, input_path, output_dir, quality)
-        //})
-        //.await?
+        let input_path = Path::new(input_path).to_owned();
+        let output_dir = output_dir.to_owned();
+        tokio::task::spawn_blocking(move || {
+            let factory = factory.blocking_lock();
+            shrink_image(&*factory, &input_path, &output_dir, quality)
+        })
+        .await?
     }
 }
 
-async fn process_files<F: ImageProcessorFactory, I: Iterator<Item = String>>(
-    factory: &F,
+async fn process_files<F, I>(
+    factory: Arc<Mutex<F>>,
     input_files: I,
     output_dir: &Path,
     quality: Quality,
-) {
-    for input in input_files {
-        event!(Level::INFO, "Processing image: {}", input);
-        //tokio::spawn(async move {
-        if let Err(e) = process_image(factory, &input, output_dir, quality).await {
-            eprintln!("Error processing image {}: {}", input, e);
-        }
-        //});
-    }
+) where
+    F: ImageProcessorFactory + Send + 'static,
+    I: Iterator<Item = String> + Send + 'static,
+{
+    let tasks = input_files
+        .map(|input| {
+            let factory = factory.clone();
+            let output_dir = output_dir.to_owned();
+            tokio::spawn(async move {
+                if let Err(e) = process_image(factory, &input, &output_dir, quality).await {
+                    eprintln!("Error processing image {}: {}", input, e);
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+
+    join_all(tasks).await;
 }
 
 /// Command-line interface for the image compactor
@@ -129,7 +143,7 @@ async fn main() -> Result<()> {
         .add_source(config::File::with_name("config.toml").required(false))
         .build()?;
 
-    let factory = DefaultImageProcessorFactory {};
+    let factory = Arc::new(Mutex::new(DefaultImageProcessorFactory {}));
     let output_dir = cli.output_dir.unwrap_or_else(|| {
         config
             .get_string("output_dir")
@@ -147,25 +161,26 @@ async fn main() -> Result<()> {
     });
     event!(Level::INFO, "Image quality: {}", quality);
     let quality = Quality::try_from(quality)?;
-    process_files(&factory, cli.input.into_iter(), output_dir, quality).await;
-    if cli.stdin {
+    process_files(factory.clone(), cli.input.into_iter(), output_dir, quality).await;
+    /*if cli.stdin {
         event!(
             Level::WARN,
             "Reading list of files from stdin. Press Ctrl+D to finish input."
         );
+        let stdin = std::io::stdin().lock();
         process_files(
-            &factory,
-            std::io::stdin().lock().lines().filter_map(Result::ok),
+            factory.clone(),
+            stdin.lines().filter_map(Result::ok),
             output_dir,
             quality,
         )
         .await;
-    }
+    }*/
     if let Some(path) = cli.from_file {
         let input_file = std::fs::File::open(path)?;
         let reader = std::io::BufReader::new(input_file);
         process_files(
-            &factory,
+            factory,
             reader.lines().filter_map(Result::ok),
             output_dir,
             quality,

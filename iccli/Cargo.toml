@@ -7,6 +7,7 @@ edition = "2024"
 anyhow = "1.0.98"
 clap = { version = "4.5.40", features = ["derive"] }
 config = { version = "0.15.11", default-features = false, features = ["toml"] }
+futures = "0.3.31"
 img-processor = { path = "../img-processor" }
 tempfile = "3.20.0"
 tracing = "0.1.41"
