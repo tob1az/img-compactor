@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Parser;
 use config::Config;
-use futures::future::join_all;
+use futures::stream::{self, StreamExt};
 use img_processor::{DefaultImageProcessorFactory, ImageProcessorFactory, Quality};
 use std::{io::BufRead, path::Path, sync::Arc};
 use tempfile::Builder;
@@ -90,7 +90,7 @@ async fn process_files<F, I>(
     F: ImageProcessorFactory + Send + 'static,
     I: Iterator<Item = String> + Send + 'static,
 {
-    let tasks = input_files
+    stream::iter(input_files)
         .map(|input| {
             let factory = factory.clone();
             let output_dir = output_dir.to_owned();
@@ -100,9 +100,13 @@ async fn process_files<F, I>(
                 }
             })
         })
-        .collect::<Vec<_>>();
-
-    join_all(tasks).await;
+        .buffer_unordered(num_cpus::get())
+        .for_each(|result| async {
+            if let Err(e) = result {
+                eprintln!("Error in processing task: {}", e);
+            }
+        })
+        .await;
 }
 
 /// Command-line interface for the image compactor
