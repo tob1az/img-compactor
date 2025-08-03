@@ -1,2 +1,3 @@
 #!/bin/bash
-RUST_LOG=info time cargo r -- --from-file big_input.txt --quality 40
+cargo b --release
+RUST_LOG=info time cargo r --release -- --from-file big_input.txt --quality 40
