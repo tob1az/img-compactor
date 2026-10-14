@@ -13,6 +13,8 @@
 
 A 30-second vertical explainer (1080×1920, 30fps) in five scenes:
 
+![The five scenes, fully built, with the safe-zone guide on](preview.png)
+
 1. `HookScene`: chatbots answer, agents act
 2. `LoopScene`: the Think → Act → Observe (ReAct) loop
 3. `ToolScene`: how a tool call travels through the runtime and back into context
